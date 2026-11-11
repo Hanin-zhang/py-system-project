@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 数据/结果产物（可重新生成）
+experiments/*/results/
+*.parquet
+
+# 依赖锁文件必须提交（可复现构建），虚拟环境不提交
+.venv/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Java
+server/target/
+server/.mvn/wrapper/maven-wrapper.jar
+
+# Node
+web/node_modules/
+web/dist/
