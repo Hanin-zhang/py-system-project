@@ -27,3 +27,5 @@ server/.mvn/wrapper/maven-wrapper.jar
 # Node
 web/node_modules/
 web/dist/
+
+*项目排期规划.md

@@ -33,7 +33,7 @@ case_loader → powerflow → timeseries → hc_solver → mitigation
 |---|---|---|
 | W0 | 工程骨架 / 算例导出 / 曲线 / 单位校验 | ✅ |
 | I1 | 潮流计算内核 + 约束判定 + HTTP 接口 + 测试 | ✅ |
-| I2 | 时序仿真引擎 | 待开始 |
+| I2 | 时序仿真引擎 + Parquet 落盘 + 任务注册表 | ✅ |
 | I3 | 承载力评估（核心） | 待开始 |
 | I4 | 越限归因与敏感性 | 待开始 |
 | I5 | 治理策略与方案对比（核心） | 待开始 |
@@ -59,17 +59,21 @@ calc/                          Python 计算服务
 │   ├── case_loader.py         算例 schema、校验、JSON ↔ pandapower 网络
 │   ├── powerflow.py           交流潮流封装 + 结构化结果
 │   ├── constraints.py         运行约束与越限判定
+│   ├── timeseries.py          曲线 / 场景组装 / 逐时段潮流 / Parquet 落盘
+│   ├── tasks.py               任务注册表（进程内）
 │   └── api.py                 FastAPI 路由
 ├── scripts/
 │   ├── export_cases.py        从 pandapower 导出公开算例为 JSON
 │   ├── gen_profiles.py        生成 96 点模拟负荷/光伏曲线
 │   ├── smoke_powerflow.py     冒烟：加载 → 潮流 → 打印指标 → 对拍
 │   ├── pv_trial.py            单点光伏试算 + 电压沿馈线分布图
+│   ├── verify_parquet.py      独立校验落盘结果（形状/数值/电量闭合）
 │   └── unit_check.py          单位与量级校验（故意构造错误数据验证拦截）
 ├── data/
 │   ├── cases/                 算例 JSON
-│   └── profiles/              96 点曲线 CSV
-└── tests/                     pytest（58 项）
+│   ├── profiles/              96 点曲线 CSV
+│   └── results/               时序结果（按 taskId 分目录，gitignore）
+└── tests/                     pytest（112 项）
 server/                        Java 业务服务（待建）
 web/                           前端（待建）
 docs/                          数据字典、设计文档、架构决策

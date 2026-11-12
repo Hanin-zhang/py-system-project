@@ -162,3 +162,48 @@ IEEE 33-bus 无开关；环网算例会用到（`closed=false` 表示常开联�
 - 光伏曲线 `pv_typical_day.csv`：单峰（正午），06:00 起、18:00 止
 
 曲线是**模拟生成**的，生成参数见 `calc/scripts/gen_profiles.py` 文件头。
+
+### 时序结果文件（I2 起使用）
+
+每次时序仿真落盘到 `calc/data/results/{taskId}/`：
+
+| 文件 | 形状 | 单位 | 说明 |
+|---|---|---|---|
+| `meta.json` | — | — | 维度、列索引、场景参数、算例来源、空矩阵声明 |
+| `summary.json` | — | — | 摘要指标（见下） |
+| `vm_pu.parquet` | (n_steps, n_bus) | p.u. | 节点电压幅值，列名=bus index（字符串） |
+| `line_loading.parquet` | (n_steps, n_line) | % | 线路负载率，列名=line index |
+| `trafo_loading.parquet` | (n_steps, n_trafo) | % | **无变压器时不生成**，由 `meta.empty_matrices` 声明 |
+| `timeseries.parquet` | (n_steps,) | MW | `pl_mw` 全网网损 / `pv_mw` 光伏总注入 |
+| `status.parquet` | (n_steps,) | — | `converged` 该时段是否收敛 |
+
+`meta.empty_matrices` 的存在原因：Parquet 是列式格式，零列时行数不可表达，
+读回来必然是 `(0,0)`。与其塞占位列污染数据，不如不写文件并在 meta 中显式声明。
+`read_result_set()` 会据此还原成 `(n_steps, 0)` 的空 DataFrame，保证
+"行数恒等于时段数"这一不变式——上层代码不需要特判。
+
+摘要指标（`summary.json`）：
+
+| 字段 | 说明 |
+|---|---|
+| `n_converged` / `failed_steps` | 收敛时段数与失败时段列表 |
+| `min_vm_pu` / `min_vm_bus` / `min_vm_step` / `min_vm_time` | 全天最低电压及出现的节点、时段 |
+| `max_vm_pu` / `max_vm_bus` / `max_vm_step` / `max_vm_time` | 全天最高电压及出现位置 |
+| `max_line_loading_percent` / `max_line_index` / `max_line_time` | 线路负载率峰值 |
+| `max_trafo_loading_percent` / `max_trafo_index` | 变压器负载率峰值 |
+| `energy_loss_mwh` | 日网损电量（Σ pl_mw × Δt） |
+| `energy_pv_mwh` | 日光伏发电量 |
+| `energy_load_mwh` | 日负荷电量 |
+| `elapsed_ms` | 总耗时 |
+| `warmstart_fallbacks` | 热启动失败回退 `init="flat"` 的次数 |
+
+### 场景（Scenario）约定
+
+- `p_load(t) = 基准 p_mw × load_factor(t) × load_scale`
+- `q_load(t) = 基准 q_mvar × load_factor(t) × load_scale`
+- `p_pv(t) = 装机容量 × pv_factor(t)`
+- `q_pv(t) = -p_pv(t) × tan(arccos(power_factor))`
+
+**无功符号**：pandapower 中 `sgen.q_mvar > 0` 表示**向电网注入无功**（抬电压），
+`< 0` 表示吸收（压电压）。光伏按 `power_factor < 1` 运行时通常工作在吸收无功状态，
+因此公式取负号。I5 的逆变器无功调节会直接利用这个约定。

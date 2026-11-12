@@ -8,7 +8,7 @@ dependencies = [
     # pandapower 2.14 内部 `from numpy import Inf`，该别名在 NumPy 2 中已删除，必须锁 1.x
     "numpy>=1.26,<2.0",
     "pandas>=2.0,<3.0",
-    "pyarrow>=14.0",
+    "pyarrow>=14,<19",
     "fastapi>=0.110",
     "uvicorn>=0.27",
     "pydantic>=2.5",
