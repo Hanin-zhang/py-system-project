@@ -1,0 +1,131 @@
+{
+  "task_id": "9b4d81665e1e4e89",
+  "case": {
+    "name": "IEEE 33-bus",
+    "source": "pandapower.networks.case33bw()",
+    "description": "IEEE 33 节点 12.66 kV 辐射状配电算例（Baran & Wu, 1989）。注意：pandapower 版本保留了 5 条常开联络线且全部闭合、max_i_ka 设为 99999，因此原始网络含 5 个环、线路负载率不是有效约束。",
+    "vn_kv": 12.66,
+    "f_hz": 60.0
+  },
+  "scenario": {
+    "case_path": "data/cases/ieee33.json",
+    "load_profile_path": "data/profiles/load_typical_day.csv",
+    "pv_profile_path": "data/profiles/pv_typical_day.csv",
+    "load_scale": 1.0,
+    "name": "pv-2mw",
+    "sgens": [
+      {
+        "bus": 17,
+        "capacity_mw": 2.0,
+        "power_factor": 1.0,
+        "name": ""
+      }
+    ]
+  },
+  "dims": {
+    "n_steps": 96,
+    "n_bus": 33,
+    "n_line": 37,
+    "n_trafo": 0
+  },
+  "files": {
+    "vm_pu": "vm_pu.parquet",
+    "line_loading": "line_loading.parquet",
+    "trafo_loading": null,
+    "timeseries": "timeseries.parquet",
+    "status": "status.parquet"
+  },
+  "empty_matrices": [
+    "trafo_loading"
+  ],
+  "step_minutes": 15,
+  "bus_index": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32
+  ],
+  "line_index": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36
+  ],
+  "trafo_index": [],
+  "columns": {
+    "vm_pu": "节点电压幅值 p.u.，行=时段，列=bus index",
+    "line_loading": "线路负载率 %，行=时段，列=line index",
+    "trafo_loading": "变压器负载率 %，行=时段，列=trafo index",
+    "timeseries": "pl_mw 全网有功网损 MW；pv_mw 光伏总有功注入 MW",
+    "status": "converged 该时段潮流是否收敛"
+  },
+  "units": {
+    "vm_pu": "p.u.",
+    "line_loading": "percent",
+    "pl_mw": "MW",
+    "pv_mw": "MW"
+  },
+  "warnings": []
+}

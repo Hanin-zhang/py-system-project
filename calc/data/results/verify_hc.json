@@ -1,0 +1,834 @@
+{
+  "1": {
+    "bus": 1,
+    "max_mw": 13.95,
+    "limiting_type": "line_overload",
+    "limiting_element_type": "line",
+    "limiting_element_index": 0,
+    "limiting_step": 52,
+    "limiting_time": "13:00",
+    "limiting_value": 100.0088898990518,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 13.95,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 14.0,
+        "feasible": false,
+        "n_violations": 1,
+        "constraint_types": [
+          "line_overload"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 23,
+    "elapsed_ms": 10741.045082999335,
+    "at_max": {
+      "capacity_mw": 13.95,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124722,
+      "max_vm_pu": 1.0031830127563768,
+      "max_line_loading_percent": 99.95046856434573,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "line_overload"
+      ],
+      "first": {
+        "constraint": "line_overload",
+        "element_type": "line",
+        "element_index": 0,
+        "limit": 100.0,
+        "first_step": 52,
+        "first_time": "13:00",
+        "worst_step": 52,
+        "worst_time": "13:00",
+        "worst_value": 100.0088898990518,
+        "n_steps": 1,
+        "severity": 8.889899051794714e-05
+      },
+      "violations": [
+        {
+          "constraint": "line_overload",
+          "element_type": "line",
+          "element_index": 0,
+          "limit": 100.0,
+          "first_step": 52,
+          "first_time": "13:00",
+          "worst_step": 52,
+          "worst_time": "13:00",
+          "worst_value": 100.0088898990518,
+          "n_steps": 1,
+          "severity": 8.889899051794714e-05
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  },
+  "5": {
+    "bus": 5,
+    "max_mw": 12.9,
+    "limiting_type": "voltage_high",
+    "limiting_element_type": "bus",
+    "limiting_element_index": 5,
+    "limiting_step": 54,
+    "limiting_time": "13:30",
+    "limiting_value": 1.0700368761759922,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 12.9,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 12.95,
+        "feasible": false,
+        "n_violations": 1,
+        "constraint_types": [
+          "voltage_high"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 23,
+    "elapsed_ms": 11144.790499998635,
+    "at_max": {
+      "capacity_mw": 12.9,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124841,
+      "max_vm_pu": 1.0699946931703723,
+      "max_line_loading_percent": 98.61436522817628,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "voltage_high"
+      ],
+      "first": {
+        "constraint": "voltage_high",
+        "element_type": "bus",
+        "element_index": 5,
+        "limit": 1.07,
+        "first_step": 54,
+        "first_time": "13:30",
+        "worst_step": 54,
+        "worst_time": "13:30",
+        "worst_value": 1.0700368761759922,
+        "n_steps": 1,
+        "severity": 3.4463715880494185e-05
+      },
+      "violations": [
+        {
+          "constraint": "voltage_high",
+          "element_type": "bus",
+          "element_index": 5,
+          "limit": 1.07,
+          "first_step": 54,
+          "first_time": "13:30",
+          "worst_step": 54,
+          "worst_time": "13:30",
+          "worst_value": 1.0700368761759922,
+          "n_steps": 1,
+          "severity": 3.4463715880494185e-05
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  },
+  "8": {
+    "bus": 8,
+    "max_mw": 7.39375,
+    "limiting_type": "voltage_high",
+    "limiting_element_type": "bus",
+    "limiting_element_index": 8,
+    "limiting_step": 54,
+    "limiting_time": "13:30",
+    "limiting_value": 1.0700313410950413,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 7.39375,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 7.44375,
+        "feasible": false,
+        "n_violations": 1,
+        "constraint_types": [
+          "voltage_high"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 22,
+    "elapsed_ms": 10620.477000000392,
+    "at_max": {
+      "capacity_mw": 7.39375,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124846,
+      "max_vm_pu": 1.069953032011234,
+      "max_line_loading_percent": 60.76682210385219,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "voltage_high"
+      ],
+      "first": {
+        "constraint": "voltage_high",
+        "element_type": "bus",
+        "element_index": 8,
+        "limit": 1.07,
+        "first_step": 54,
+        "first_time": "13:30",
+        "worst_step": 54,
+        "worst_time": "13:30",
+        "worst_value": 1.0700313410950413,
+        "n_steps": 1,
+        "severity": 2.9290743029173067e-05
+      },
+      "violations": [
+        {
+          "constraint": "voltage_high",
+          "element_type": "bus",
+          "element_index": 8,
+          "limit": 1.07,
+          "first_step": 54,
+          "first_time": "13:30",
+          "worst_step": 54,
+          "worst_time": "13:30",
+          "worst_value": 1.0700313410950413,
+          "n_steps": 1,
+          "severity": 2.9290743029173067e-05
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  },
+  "12": {
+    "bus": 12,
+    "max_mw": 4.50625,
+    "limiting_type": "voltage_high",
+    "limiting_element_type": "bus",
+    "limiting_element_index": 12,
+    "limiting_step": 54,
+    "limiting_time": "13:30",
+    "limiting_value": 1.0700161066021048,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 4.50625,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 4.55625,
+        "feasible": false,
+        "n_violations": 1,
+        "constraint_types": [
+          "voltage_high"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 22,
+    "elapsed_ms": 10501.730124999085,
+    "at_max": {
+      "capacity_mw": 4.50625,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124814,
+      "max_vm_pu": 1.0698793090177876,
+      "max_line_loading_percent": 49.67560072830724,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "voltage_high"
+      ],
+      "first": {
+        "constraint": "voltage_high",
+        "element_type": "bus",
+        "element_index": 12,
+        "limit": 1.07,
+        "first_step": 54,
+        "first_time": "13:30",
+        "worst_step": 54,
+        "worst_time": "13:30",
+        "worst_value": 1.0700161066021048,
+        "n_steps": 1,
+        "severity": 1.5052899163285187e-05
+      },
+      "violations": [
+        {
+          "constraint": "voltage_high",
+          "element_type": "bus",
+          "element_index": 12,
+          "limit": 1.07,
+          "first_step": 54,
+          "first_time": "13:30",
+          "worst_step": 54,
+          "worst_time": "13:30",
+          "worst_value": 1.0700161066021048,
+          "n_steps": 1,
+          "severity": 1.5052899163285187e-05
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  },
+  "17": {
+    "bus": 17,
+    "max_mw": 3.06875,
+    "limiting_type": "voltage_high",
+    "limiting_element_type": "bus",
+    "limiting_element_index": 17,
+    "limiting_step": 54,
+    "limiting_time": "13:30",
+    "limiting_value": 1.07007240417162,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 3.06875,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 3.11875,
+        "feasible": false,
+        "n_violations": 1,
+        "constraint_types": [
+          "voltage_high"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 20,
+    "elapsed_ms": 9497.092166000584,
+    "at_max": {
+      "capacity_mw": 3.06875,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124779,
+      "max_vm_pu": 1.0698676187946832,
+      "max_line_loading_percent": 49.67560072831311,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "voltage_high"
+      ],
+      "first": {
+        "constraint": "voltage_high",
+        "element_type": "bus",
+        "element_index": 17,
+        "limit": 1.07,
+        "first_step": 54,
+        "first_time": "13:30",
+        "worst_step": 54,
+        "worst_time": "13:30",
+        "worst_value": 1.07007240417162,
+        "n_steps": 1,
+        "severity": 6.766745011216998e-05
+      },
+      "violations": [
+        {
+          "constraint": "voltage_high",
+          "element_type": "bus",
+          "element_index": 17,
+          "limit": 1.07,
+          "first_step": 54,
+          "first_time": "13:30",
+          "worst_step": 54,
+          "worst_time": "13:30",
+          "worst_value": 1.07007240417162,
+          "n_steps": 1,
+          "severity": 6.766745011216998e-05
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  },
+  "24": {
+    "bus": 24,
+    "max_mw": 8.8375,
+    "limiting_type": "voltage_high",
+    "limiting_element_type": "bus",
+    "limiting_element_index": 24,
+    "limiting_step": 52,
+    "limiting_time": "13:00",
+    "limiting_value": 1.0700213251984756,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 8.8375,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 8.8875,
+        "feasible": false,
+        "n_violations": 1,
+        "constraint_types": [
+          "voltage_high"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 24,
+    "elapsed_ms": 11495.195750001585,
+    "at_max": {
+      "capacity_mw": 8.8375,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124848,
+      "max_vm_pu": 1.0699647225521205,
+      "max_line_loading_percent": 76.08690711434073,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "voltage_high"
+      ],
+      "first": {
+        "constraint": "voltage_high",
+        "element_type": "bus",
+        "element_index": 24,
+        "limit": 1.07,
+        "first_step": 52,
+        "first_time": "13:00",
+        "worst_step": 52,
+        "worst_time": "13:00",
+        "worst_value": 1.0700213251984756,
+        "n_steps": 1,
+        "severity": 1.993009203320586e-05
+      },
+      "violations": [
+        {
+          "constraint": "voltage_high",
+          "element_type": "bus",
+          "element_index": 24,
+          "limit": 1.07,
+          "first_step": 52,
+          "first_time": "13:00",
+          "worst_step": 52,
+          "worst_time": "13:00",
+          "worst_value": 1.0700213251984756,
+          "n_steps": 1,
+          "severity": 1.993009203320586e-05
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  },
+  "30": {
+    "bus": 30,
+    "max_mw": 5.5,
+    "limiting_type": "voltage_high",
+    "limiting_element_type": "bus",
+    "limiting_element_index": 30,
+    "limiting_step": 54,
+    "limiting_time": "13:30",
+    "limiting_value": 1.0700259835323989,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 5.5,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 5.55,
+        "feasible": false,
+        "n_violations": 3,
+        "constraint_types": [
+          "voltage_high"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 21,
+    "elapsed_ms": 10028.965666999284,
+    "at_max": {
+      "capacity_mw": 5.5,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124737,
+      "max_vm_pu": 1.069912940374865,
+      "max_line_loading_percent": 49.6756007283152,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "voltage_high"
+      ],
+      "first": {
+        "constraint": "voltage_high",
+        "element_type": "bus",
+        "element_index": 30,
+        "limit": 1.07,
+        "first_step": 54,
+        "first_time": "13:30",
+        "worst_step": 54,
+        "worst_time": "13:30",
+        "worst_value": 1.0700259835323989,
+        "n_steps": 1,
+        "severity": 2.4283675139064403e-05
+      },
+      "violations": [
+        {
+          "constraint": "voltage_high",
+          "element_type": "bus",
+          "element_index": 30,
+          "limit": 1.07,
+          "first_step": 54,
+          "first_time": "13:30",
+          "worst_step": 54,
+          "worst_time": "13:30",
+          "worst_value": 1.0700259835323989,
+          "n_steps": 1,
+          "severity": 2.4283675139064403e-05
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  },
+  "32": {
+    "bus": 32,
+    "max_mw": 5.025,
+    "limiting_type": "voltage_high",
+    "limiting_element_type": "bus",
+    "limiting_element_index": 32,
+    "limiting_step": 54,
+    "limiting_time": "13:30",
+    "limiting_value": 1.0700073231416727,
+    "search_method": "bisection",
+    "monotonicity": {
+      "monotonic": true,
+      "checked_points": 11,
+      "reasons": [],
+      "min_vm_trend": "flat"
+    },
+    "probe": {
+      "probe_mw": 0.05,
+      "at_max": {
+        "capacity_mw": 5.025,
+        "feasible": true
+      },
+      "above": {
+        "capacity_mw": 5.075,
+        "feasible": false,
+        "n_violations": 1,
+        "constraint_types": [
+          "voltage_high"
+        ]
+      },
+      "passed": true
+    },
+    "iterations": 22,
+    "elapsed_ms": 10599.88924999925,
+    "at_max": {
+      "capacity_mw": 5.025,
+      "feasible": true,
+      "min_vm_pu": 0.9409148759124816,
+      "max_vm_pu": 1.0698837770298453,
+      "max_line_loading_percent": 49.67560072830703,
+      "max_trafo_loading_percent": null,
+      "n_unconverged": 0,
+      "first_violation": null,
+      "phase": "bisect"
+    },
+    "violations_above": {
+      "feasible": false,
+      "unconverged_steps": [],
+      "constraint_types": [
+        "voltage_high"
+      ],
+      "first": {
+        "constraint": "voltage_high",
+        "element_type": "bus",
+        "element_index": 32,
+        "limit": 1.07,
+        "first_step": 54,
+        "first_time": "13:30",
+        "worst_step": 54,
+        "worst_time": "13:30",
+        "worst_value": 1.0700073231416727,
+        "n_steps": 1,
+        "severity": 6.844057637964114e-06
+      },
+      "violations": [
+        {
+          "constraint": "voltage_high",
+          "element_type": "bus",
+          "element_index": 32,
+          "limit": 1.07,
+          "first_step": 54,
+          "first_time": "13:30",
+          "worst_step": 54,
+          "worst_time": "13:30",
+          "worst_value": 1.0700073231416727,
+          "n_steps": 1,
+          "severity": 6.844057637964114e-06
+        }
+      ]
+    },
+    "constraints": {
+      "vm_min_pu": 0.93,
+      "vm_max_pu": 1.07,
+      "line_loading_percent_max": 100.0,
+      "trafo_loading_percent_max": 100.0
+    },
+    "options": {
+      "tol_mw": 0.01,
+      "initial_mw": 0.5,
+      "max_capacity_mw": 50.0,
+      "coarse_points": 10,
+      "probe_mw": 0.05,
+      "linear_divisions": 100
+    },
+    "scenario": {
+      "case": "IEEE 33-bus (with ampacity)",
+      "case_path": "/Users/zhanghan37/electriy-project/calc/data/cases/ieee33_ampacity.json",
+      "load_profile": "simbench_pv_max_day_20160513_load",
+      "pv_profile": "simbench_pv_max_day_20160513_pv",
+      "load_scale": 1.0,
+      "n_steps": 96,
+      "power_factor": 1.0
+    }
+  }
+}
