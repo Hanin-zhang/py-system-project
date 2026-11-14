@@ -342,177 +342,233 @@ class TimeseriesResult:
     converged: np.ndarray        # (n_steps,) bool
 
 
-def _time_str(step: int, n_steps: int) -> str:
+def step_to_hhmm(step: int, n_steps: int) -> str:
+    """时段索引 -> "HH:MM"。I3 的首次越限时刻也用它，保证两处时间口径一致。"""
     minutes = step * (24 * 60 // n_steps)
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
-def run_timeseries(scenario: Scenario, keep_solver_results: bool = False) -> TimeseriesResult:
-    """逐时段执行潮流，返回矩阵结果。不做越限判定。
+_time_str = step_to_hhmm  # 兼容模块内部旧调用
 
-    实现要点：
-    - 整列赋值 load.p_mw = base * factor，避免逐行 setvalue
-    - sgen 在 build 阶段一次性建好（容量为 0），每时段只改 p_mw，避免反复 create
-    - 热启动失败自动回退 flat 重试；仍失败则记入 failed_steps 并继续（不中断整天）
+
+class TimeseriesRunner:
+    """在**同一张 pandapower 网**上反复跑一天的时序潮流。
+
+    存在的理由：承载力评估要对同一个节点、同一张网试十几次不同容量。
+    如果每次都重建 net（建表 + 填 33 个 bus / 37 条 line / 32 个 load），
+    光是构网就占了总耗时的可观比例，且每次都从零开始冷启动。
+
+    - `run()`            用场景自身的装机容量跑（等价于 I2 的 run_timeseries）
+    - `run(capacities)`  用外部给定的容量覆盖，网不重建 —— I3 二分搜索靠这个
+
+    注意：传入的 capacities 会覆盖 `ScenarioSpec.sgens` 的容量，但**顺序必须一致**，
+    功率因数仍取场景配置。这样"容量"是唯一变化的量，便于单调性论证。
     """
-    import time
 
-    from gp_hosting.case_loader import build_net
+    def __init__(self, scenario: Scenario):
+        from gp_hosting.case_loader import build_net
 
-    t_start = time.perf_counter()
-    net = build_net(scenario.case_spec)
+        self.scenario = scenario
+        self.net = build_net(scenario.case_spec)
 
-    # 光伏设备一次性创建，之后只改出力
-    for s in scenario.spec.sgens:
-        pp.create_sgen(
-            net,
-            bus=s.bus,
-            p_mw=0.0,
-            q_mvar=0.0,
-            name=s.name or f"PV@{s.bus}",
-            type="wye",
+        # 光伏设备一次性创建，之后只改出力
+        for s in scenario.spec.sgens:
+            pp.create_sgen(
+                self.net,
+                bus=s.bus,
+                p_mw=0.0,
+                q_mvar=0.0,
+                name=s.name or f"PV@{s.bus}",
+                type="wye",
+            )
+
+        self.n_steps = scenario.n_steps
+        self.n_bus = len(self.net.bus)
+        self.n_line = len(self.net.line)
+        self.n_trafo = len(self.net.trafo)
+        self.bus_index = [int(i) for i in self.net.bus.index]
+        self.line_index = [int(i) for i in self.net.line.index]
+        self.trafo_index = [int(i) for i in self.net.trafo.index]
+
+        self._load_factors = np.asarray(scenario.load_profile.factors, dtype=float)
+        self._pv_factors = (
+            np.asarray(scenario.pv_profile.factors, dtype=float)
+            if scenario.pv_profile is not None
+            else np.zeros(self.n_steps)
         )
-
-    n_steps = scenario.n_steps
-    n_bus, n_line, n_trafo = len(net.bus), len(net.line), len(net.trafo)
-    n_load = len(net.load)
-
-    vm = np.full((n_steps, n_bus), np.nan)
-    line_loading = np.full((n_steps, n_line), np.nan)
-    trafo_loading = np.full((n_steps, n_trafo), np.nan)
-    pl = np.full(n_steps, np.nan)
-    pv_energy = np.full(n_steps, np.nan)
-    converged = np.zeros(n_steps, dtype=bool)
-    failed: list[int] = []
-    fallbacks = 0
-
-    load_factors = np.asarray(scenario.load_profile.factors, dtype=float)
-    pv_factors = (
-        np.asarray(scenario.pv_profile.factors, dtype=float)
-        if scenario.pv_profile is not None
-        else np.zeros(n_steps)
-    )
-    # 各光伏接入点的功率因数 -> 无功比例
-    pf_sin = np.array(
-        [np.sqrt(max(0.0, 1.0 - s.power_factor**2)) for s in scenario.spec.sgens], dtype=float
-    )
-    capacities = np.array([s.capacity_mw for s in scenario.spec.sgens], dtype=float)
-
-    for t in range(n_steps):
-        # 负荷：整列赋值
-        net.load["p_mw"] = scenario.load_base_mw * load_factors[t] * scenario.spec.load_scale
-        net.load["q_mvar"] = scenario.load_base_mvar * load_factors[t] * scenario.spec.load_scale
-
-        # 光伏：p(t) = 装机 × 曲线系数；q(t) = -p(t) × tan(acos(pf))
-        # 符号约定：sgen 的 q_mvar 为正 = 注入无功（抬电压）。
-        # 光伏若按 pf<1 运行，通常处于"吸收无功"状态，因此取负号。
-        if len(capacities):
-            p_t = capacities * pv_factors[t]
-            net.sgen["p_mw"] = p_t
-            net.sgen["q_mvar"] = -(p_t * pf_sin)
-
-        opts = powerflow.PowerFlowOptions(
-            init="auto" if t == 0 else "results",
-            max_iteration=30,
+        # 各光伏接入点的功率因数 -> 无功比例
+        self._pf_sin = np.array(
+            [np.sqrt(max(0.0, 1.0 - s.power_factor**2)) for s in scenario.spec.sgens], dtype=float
         )
-        result = powerflow.run(net, opts)
+        self._n_sgen = len(scenario.spec.sgens)
+        self.total_evaluations = 0
 
-        if not result.converged and t > 0:
-            # 热启动可能因工况突变失败，回退 flat 再试一次
-            fallbacks += 1
-            result = powerflow.run(net, powerflow.PowerFlowOptions(init="flat", max_iteration=50))
+    def run(self, capacities_mw: list[float] | np.ndarray | None = None) -> TimeseriesResult:
+        """逐时段执行潮流，返回矩阵结果。不做越限判定。
 
-        if not result.converged:
-            failed.append(t)
-            continue
+        实现要点：
+        - 整列赋值 load.p_mw = base * factor，避免逐行 setvalue
+        - sgen 已在本对象构造时建好，每时段只改 p_mw，避免反复 create
+        - 热启动失败自动回退 flat 重试；仍失败则记入 failed_steps 并继续（不中断整天）
+        """
+        import time
 
-        converged[t] = True
-        vm[t, :] = [b.vm_pu for b in result.bus]
-        line_loading[t, :] = [ln.loading_percent for ln in result.line]
-        if n_trafo:
-            trafo_loading[t, :] = [tr.loading_percent for tr in result.trafo]
-        assert result.summary is not None
-        pl[t] = result.summary.total_p_loss_mw
-        pv_energy[t] = result.summary.total_sgen_mw
+        net = self.net
+        scenario = self.scenario
+        n_steps, n_bus, n_line, n_trafo = self.n_steps, self.n_bus, self.n_line, self.n_trafo
+        t_start = time.perf_counter()
+        self.total_evaluations += 1
 
-    elapsed_ms = (time.perf_counter() - t_start) * 1000
+        vm = np.full((n_steps, n_bus), np.nan)
+        line_loading = np.full((n_steps, n_line), np.nan)
+        trafo_loading = np.full((n_steps, n_trafo), np.nan)
+        pl = np.full(n_steps, np.nan)
+        pv_energy = np.full(n_steps, np.nan)
+        converged = np.zeros(n_steps, dtype=bool)
+        failed: list[int] = []
+        fallbacks = 0
 
-    # ---- 摘要 ----
-    hours_per_step = 24.0 / n_steps
-    ok = converged
-    if ok.any():
-        vm_ok = np.where(ok[:, None], vm, np.nan)
-        min_flat = np.nanmin(vm_ok)
-        min_t, min_b = np.unravel_index(np.nanargmin(vm_ok), vm_ok.shape)
-        max_flat = np.nanmax(vm_ok)
-        max_t, max_b = np.unravel_index(np.nanargmax(vm_ok), vm_ok.shape)
-
-        ll_ok = np.where(ok[:, None], line_loading, np.nan) if n_line else None
-        if ll_ok is not None and np.isfinite(ll_ok).any():
-            max_ll = float(np.nanmax(ll_ok))
-            ll_t, ll_i = np.unravel_index(np.nanargmax(ll_ok), ll_ok.shape)
+        load_factors = self._load_factors
+        pv_factors = self._pv_factors
+        pf_sin = self._pf_sin
+        if capacities_mw is None:
+            capacities = np.array([s.capacity_mw for s in scenario.spec.sgens], dtype=float)
         else:
-            max_ll, ll_t, ll_i = 0.0, 0, 0
+            capacities = np.asarray(capacities_mw, dtype=float)
+            if len(capacities) != self._n_sgen:
+                raise ProfileError(
+                    f"覆盖容量个数 {len(capacities)} 与光伏接入点个数 {self._n_sgen} 不一致",
+                    {"field": "capacities_mw", "expected": self._n_sgen, "got": len(capacities)},
+                )
 
-        if n_trafo:
-            tl_ok = np.where(ok[:, None], trafo_loading, np.nan)
-            if np.isfinite(tl_ok).any():
-                max_tl = float(np.nanmax(tl_ok))
-                tl_t, tl_i = np.unravel_index(np.nanargmax(tl_ok), tl_ok.shape)
+        for t in range(n_steps):
+            # 负荷：整列赋值
+            net.load["p_mw"] = scenario.load_base_mw * load_factors[t] * scenario.spec.load_scale
+            net.load["q_mvar"] = scenario.load_base_mvar * load_factors[t] * scenario.spec.load_scale
+
+            # 光伏：p(t) = 装机 × 曲线系数；q(t) = -p(t) × tan(acos(pf))
+            # 符号约定：sgen 的 q_mvar 为正 = 注入无功（抬电压）。
+            # 光伏若按 pf<1 运行，通常处于"吸收无功"状态，因此取负号。
+            if len(capacities):
+                p_t = capacities * pv_factors[t]
+                net.sgen["p_mw"] = p_t
+                net.sgen["q_mvar"] = -(p_t * pf_sin)
+
+            opts = powerflow.PowerFlowOptions(
+                init="auto" if t == 0 else "results",
+                max_iteration=30,
+            )
+            result = powerflow.run(net, opts)
+
+            if not result.converged and t > 0:
+                # 热启动可能因工况突变失败，回退 flat 再试一次
+                fallbacks += 1
+                result = powerflow.run(net, powerflow.PowerFlowOptions(init="flat", max_iteration=50))
+
+            if not result.converged:
+                failed.append(t)
+                continue
+
+            converged[t] = True
+            vm[t, :] = [b.vm_pu for b in result.bus]
+            line_loading[t, :] = [ln.loading_percent for ln in result.line]
+            if n_trafo:
+                trafo_loading[t, :] = [tr.loading_percent for tr in result.trafo]
+            assert result.summary is not None
+            pl[t] = result.summary.total_p_loss_mw
+            pv_energy[t] = result.summary.total_sgen_mw
+
+        elapsed_ms = (time.perf_counter() - t_start) * 1000
+
+        return self._summarize(
+            vm, line_loading, trafo_loading, pl, pv_energy, converged, failed, fallbacks,
+            load_factors, elapsed_ms,
+        )
+
+    def _summarize(
+        self, vm, line_loading, trafo_loading, pl, pv_energy, converged, failed, fallbacks,
+        load_factors, elapsed_ms,
+    ) -> TimeseriesResult:
+        scenario = self.scenario
+        net = self.net
+        n_steps, n_line, n_trafo = self.n_steps, self.n_line, self.n_trafo
+
+        # ---- 摘要 ----
+        hours_per_step = 24.0 / n_steps
+        ok = converged
+        if ok.any():
+            vm_ok = np.where(ok[:, None], vm, np.nan)
+            min_flat = np.nanmin(vm_ok)
+            min_t, min_b = np.unravel_index(np.nanargmin(vm_ok), vm_ok.shape)
+            max_flat = np.nanmax(vm_ok)
+            max_t, max_b = np.unravel_index(np.nanargmax(vm_ok), vm_ok.shape)
+
+            ll_ok = np.where(ok[:, None], line_loading, np.nan) if n_line else None
+            if ll_ok is not None and np.isfinite(ll_ok).any():
+                max_ll = float(np.nanmax(ll_ok))
+                ll_t, ll_i = np.unravel_index(np.nanargmax(ll_ok), ll_ok.shape)
+            else:
+                max_ll, ll_t, ll_i = 0.0, 0, 0
+
+            if n_trafo:
+                tl_ok = np.where(ok[:, None], trafo_loading, np.nan)
+                if np.isfinite(tl_ok).any():
+                    max_tl = float(np.nanmax(tl_ok))
+                    tl_t, tl_i = np.unravel_index(np.nanargmax(tl_ok), tl_ok.shape)
+                else:
+                    max_tl, tl_t, tl_i = 0.0, 0, 0
             else:
                 max_tl, tl_t, tl_i = 0.0, 0, 0
         else:
-            max_tl, tl_t, tl_i = 0.0, 0, 0
-    else:
-        min_flat = max_flat = max_ll = max_tl = float("nan")
-        min_t = min_b = max_t = max_b = ll_t = ll_i = tl_t = tl_i = 0
+            min_flat = max_flat = max_ll = max_tl = float("nan")
+            min_t = min_b = max_t = max_b = ll_t = ll_i = tl_t = tl_i = 0
 
-    energy_loss = float(np.nansum(pl) * hours_per_step) if np.isfinite(pl).any() else 0.0
-    energy_pv = float(np.nansum(pv_energy) * hours_per_step) if np.isfinite(pv_energy).any() else 0.0
-    energy_load = float(
-        scenario.load_base_mw.sum() * float(np.nansum(load_factors)) * hours_per_step
-        * scenario.spec.load_scale
-    )
+        energy_loss = float(np.nansum(pl) * hours_per_step) if np.isfinite(pl).any() else 0.0
+        energy_pv = float(np.nansum(pv_energy) * hours_per_step) if np.isfinite(pv_energy).any() else 0.0
+        energy_load = float(
+            scenario.load_base_mw.sum() * float(np.nansum(load_factors)) * hours_per_step
+            * scenario.spec.load_scale
+        )
 
-    summary = TimeseriesSummary(
-        n_steps=n_steps,
-        step_minutes=STEP_MINUTES,
-        n_converged=int(converged.sum()),
-        failed_steps=failed,
-        min_vm_pu=float(min_flat),
-        min_vm_bus=int(net.bus.index[min_b]) if len(net.bus) else -1,
-        min_vm_step=int(min_t),
-        min_vm_time=_time_str(int(min_t), n_steps),
-        max_vm_pu=float(max_flat),
-        max_vm_bus=int(net.bus.index[max_b]) if len(net.bus) else -1,
-        max_vm_step=int(max_t),
-        max_vm_time=_time_str(int(max_t), n_steps),
-        max_line_loading_percent=float(max_ll),
-        max_line_index=int(net.line.index[ll_i]) if n_line else -1,
-        max_line_step=int(ll_t),
-        max_line_time=_time_str(int(ll_t), n_steps),
-        max_trafo_loading_percent=float(max_tl),
-        max_trafo_index=int(net.trafo.index[tl_i]) if n_trafo else None,
-        energy_loss_mwh=energy_loss,
-        energy_pv_mwh=energy_pv,
-        energy_load_mwh=energy_load,
-        elapsed_ms=elapsed_ms,
-        warmstart_fallbacks=fallbacks,
-    )
+        summary = TimeseriesSummary(
+            n_steps=n_steps,
+            step_minutes=STEP_MINUTES,
+            n_converged=int(converged.sum()),
+            failed_steps=failed,
+            min_vm_pu=float(min_flat),
+            min_vm_bus=int(net.bus.index[min_b]) if len(net.bus) else -1,
+            min_vm_step=int(min_t),
+            min_vm_time=_time_str(int(min_t), n_steps),
+            max_vm_pu=float(max_flat),
+            max_vm_bus=int(net.bus.index[max_b]) if len(net.bus) else -1,
+            max_vm_step=int(max_t),
+            max_vm_time=_time_str(int(max_t), n_steps),
+            max_line_loading_percent=float(max_ll),
+            max_line_index=int(net.line.index[ll_i]) if n_line else -1,
+            max_line_step=int(ll_t),
+            max_line_time=_time_str(int(ll_t), n_steps),
+            max_trafo_loading_percent=float(max_tl),
+            max_trafo_index=int(net.trafo.index[tl_i]) if n_trafo else None,
+            energy_loss_mwh=energy_loss,
+            energy_pv_mwh=energy_pv,
+            energy_load_mwh=energy_load,
+            elapsed_ms=elapsed_ms,
+            warmstart_fallbacks=fallbacks,
+        )
 
-    return TimeseriesResult(
-        summary=summary,
-        vm_pu=vm,
-        line_loading=line_loading,
-        trafo_loading=trafo_loading,
-        pl_mw=pl,
-        pv_mw=pv_energy,
-        bus_index=[int(i) for i in net.bus.index],
-        line_index=[int(i) for i in net.line.index],
-        trafo_index=[int(i) for i in net.trafo.index],
-        steps=list(range(n_steps)),
-        converged=converged,
-    )
+        return TimeseriesResult(
+            summary=summary,
+            vm_pu=vm,
+            line_loading=line_loading,
+            trafo_loading=trafo_loading,
+            pl_mw=pl,
+            pv_mw=pv_energy,
+            bus_index=[int(i) for i in net.bus.index],
+            line_index=[int(i) for i in net.line.index],
+            trafo_index=[int(i) for i in net.trafo.index],
+            steps=list(range(n_steps)),
+            converged=converged,
+        )
 
 
 # --------------------------------------------------------------------------
