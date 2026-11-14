@@ -3,7 +3,8 @@
 本平台所有计算输入的单位约定：**MW / kV / km / ohm / degree / p.u.**
 算例 JSON 不携带单位字段——单位是约定，不是数据。这是刻意的：让同一份数据只有一种解释。
 
-> 数据来源声明：本项目全部算例基于公开标准算例（IEEE 33-bus、CIGRE MV）与**模拟**负荷/光伏曲线，
+> 数据来源声明：本项目全部算例基于公开标准算例（IEEE 33-bus、CIGRE MV），
+> 曲线来自 SimBench 公开数据集（见 §曲线）；仅 `*_typical_day.csv` 为脚本生成的模拟曲线。
 > 不使用真实电网运行数据。
 
 ---
@@ -65,7 +66,13 @@ IEEE 33-bus 全部节点 `vn_kv = 12.66`。
 
 负载率定义：`loading_percent = max(|I_from|, |I_to|) / max_i_ka × 100%`。
 
-IEEE 33-bus 线路总长 ~37 km，`r` 约 0.2–0.6 Ω/km，`x` 约 0.1–0.3 Ω/km，`max_i_ka` 0.2–0.9 kA。
+IEEE 33-bus 实测取值（`data/cases/ieee33.json`，32 条在运线路）：
+总长 **32.0 km**（另有 5 条联络线不在运，各 1 km），`r_ohm_per_km` **0.0922–1.5042**，
+`x_ohm_per_km` **0.047–1.721**，`max_i_ka` 全部为 **99999**（原算例不设载流量约束）。
+
+> `ieee33_ampacity.json` 为派生算例：仅把 `max_i_ka` 全部改为 **0.29 kA**
+> （pandapower 标准线型 `70-AL1/11-ST1A 10.0`），用于让线路约束可观测。
+> 阻抗等其余参数与原算例完全一致，生成过程见 `calc/scripts/export_cases.py`。
 
 ---
 
@@ -158,10 +165,44 @@ IEEE 33-bus 无开关；环网算例会用到（`closed=false` 表示常开联�
 | `time_index` | 0–95 |
 | `factor` | 归一化系数，相对基准值 |
 
-- 负荷曲线 `load_typical_day.csv`：双峰（09–11、19–21），峰谷比 0.55–1.0
-- 光伏曲线 `pv_typical_day.csv`：单峰（正午），06:00 起、18:00 止
+| 文件 | 来源 | 用途 |
+|---|---|---|
+| `load_typical_day.csv` / `pv_typical_day.csv` | 脚本生成（`scripts/gen_profiles.py`） | I2 早期用例；双峰负荷、正午单峰光伏 |
+| `simbench_pv_max_day_20160513_{load,pv}.csv` | **SimBench** 公开数据集 | **I3 默认**：光伏最大日出力工况 |
+| `simbench_load_peak_day_20160122_{load,pv}.csv` | **SimBench** 公开数据集 | 全年负荷峰值日，低压工况 |
+| `simbench_manifest.json` | 导出脚本产出 | 来源、归一化口径、每日统计 |
 
-曲线是**模拟生成**的，生成参数见 `calc/scripts/gen_profiles.py` 文件头。
+SimBench 曲线的归一化口径（`scripts/import_simbench_profiles.py` 导出时写入 manifest）：
+
+- **负荷** = SimBench `1-MV-rural--0-sw` 全部负荷逐时段求和 ÷ 全年峰值（7.5094 MW）。
+  `factor=1.0` 即全年最大负荷时刻。
+- **光伏** = `PV3` 曲线的原始 p.u. 值（相对装机容量），**未二次归一化到 1.0**。
+- 排除 2016-03-27 / 2016-10-30 两个夏令时切换日（不是 96 点）。
+
+### 承载力结果（I3 起使用）
+
+**摘要表** `calc/data/results/hc/hc.sqlite3`，表 `hc_result`。字段按可直接迁移到 MySQL 设计：
+
+| 字段 | 类型 | 单位 | 说明 |
+|---|---|---|---|
+| `task_id` | TEXT | — | 一次批量评估的 ID |
+| `case_name` / `scenario_name` | TEXT | — | 算例名、场景名 |
+| `load_profile` / `pv_profile` | TEXT | — | 曲线文件名 |
+| `node` | INTEGER | — | 光伏接入节点 |
+| `max_mw` | REAL | MW | 承载力 C* |
+| `limiting_type` | TEXT | — | `voltage_high` / `voltage_low` / `line_overload` / `trafo_overload` / `not_converged` / `baseline_infeasible` / `not_reached` |
+| `limiting_element_type` / `limiting_element_index` | TEXT / INTEGER | — | 受限设备类型与编号 |
+| `limiting_time` | TEXT | `HH:MM` | 首次越限时刻 |
+| `limiting_value` | REAL | p.u. 或 % | 越限时段内的最严重值 |
+| `search_method` | TEXT | — | `bisection` / `linear` / `none` |
+| `monotonic` | INTEGER | 0/1 | 单调性判定结果 |
+| `probe_passed` | INTEGER | 0/1/NULL | ±50 kW 双向探针；NULL 表示未执行 |
+| `iterations` | INTEGER | 次 | 全天评估次数 |
+| `elapsed_ms` | REAL | ms | 耗时 |
+| `constraints_json` / `detail_path` | TEXT | — | 约束快照 / 明细文件路径 |
+
+**明细文件** `calc/data/results/hc/{task_id}/hc_bus{n}.json`：承载力扫描曲线、违规清单、单调性原因。
+表里**不存**曲线与逐时段数据——与 I2 一致，MySQL 只存摘要。
 
 ### 时序结果文件（I2 起使用）
 

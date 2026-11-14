@@ -3,7 +3,7 @@
   "meta": {
     "name": "IEEE 33-bus",
     "source": "pandapower.networks.case33bw()",
-    "description": "IEEE 33 节点 12.66 kV 辐射状配电算例（Baran & Wu, 1989）。注意：pandapower 版本保留了 5 条常开联络线且全部闭合、max_i_ka 设为 99999，因此原始网络含 5 个环、线路负载率不是有效约束。",
+    "description": "IEEE 33 节点 12.66 kV 辐射状配电算例（Baran & Wu, 1989）。pandapower 版本含 37 条线路：32 条在运（辐射状）+ 5 条联络线（in_service=False）。全部线路 max_i_ka=99999，即原算例不设载流量约束，线路负载率不是有效约束。",
     "vn_kv": 12.66,
     "f_hz": 60.0
   },

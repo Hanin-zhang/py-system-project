@@ -1,0 +1,37 @@
+{
+  "source": "simbench 1.5.3, grid 1-MV-rural--0-sw, year 2016, 15 min",
+  "load_normalization": "馈线总负荷 / 全年峰值 7.5094 MW",
+  "pv_normalization": "PV3 原始 p.u.（相对装机容量），未二次归一化",
+  "excluded_dst_days": [
+    "2016-03-27",
+    "2016-10-30"
+  ],
+  "days": {
+    "pv_max_day": {
+      "date": "2016-05-13",
+      "files": {
+        "load": "simbench_pv_max_day_20160513_load.csv",
+        "pv": "simbench_pv_max_day_20160513_pv.csv"
+      },
+      "load_factor_min": 0.2285,
+      "load_factor_max": 0.6971,
+      "pv_factor_max": 0.6152,
+      "pv_peak_step": 52,
+      "pv_equivalent_hours": 4.214,
+      "load_factor_at_pv_peak": 0.622
+    },
+    "load_peak_day": {
+      "date": "2016-01-22",
+      "files": {
+        "load": "simbench_load_peak_day_20160122_load.csv",
+        "pv": "simbench_load_peak_day_20160122_pv.csv"
+      },
+      "load_factor_min": 0.2547,
+      "load_factor_max": 1.0,
+      "pv_factor_max": 0.1052,
+      "pv_peak_step": 48,
+      "pv_equivalent_hours": 0.522,
+      "load_factor_at_pv_peak": 0.7442
+    }
+  }
+}

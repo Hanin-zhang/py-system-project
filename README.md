@@ -4,8 +4,9 @@
 
 > **这个节点最多能接多少光伏？什么时段、哪台设备先顶不住？加治理措施后能提升多少？**
 
-> 数据声明：本项目全部算例基于**公开标准算例**（IEEE 33-bus / CIGRE MV）与**模拟**负荷、光伏曲线，
-> 不使用真实电网运行数据。
+> 数据声明：网络参数来自**公开标准算例**（IEEE 33-bus / CIGRE MV，pandapower 内置），
+> 负荷与光伏曲线来自 **SimBench** 公开数据集（pandapower 团队发布，2016 年 15 min 实测标准曲线）。
+> 不使用任何真实电网运行数据。全部派生数据与假设见 [docs/hosting-capacity.md](docs/hosting-capacity.md)。
 
 ---
 
@@ -34,7 +35,7 @@ case_loader → powerflow → timeseries → hc_solver → mitigation
 | W0 | 工程骨架 / 算例导出 / 曲线 / 单位校验 | ✅ |
 | I1 | 潮流计算内核 + 约束判定 + HTTP 接口 + 测试 | ✅ |
 | I2 | 时序仿真引擎 + Parquet 落盘 + 任务注册表 | ✅ |
-| I3 | 承载力评估（核心） | 待开始 |
+| I3 | 承载力评估（核心）+ 单/批量接口 + sqlite 落库 | ✅ |
 | I4 | 越限归因与敏感性 | 待开始 |
 | I5 | 治理策略与方案对比（核心） | 待开始 |
 | I6 | Java 平台 + 前端 v1 | 待开始 |
@@ -44,8 +45,9 @@ case_loader → powerflow → timeseries → hc_solver → mitigation
 ```bash
 cd calc
 uv sync                      # 首次安装依赖（国内建议加 --index-url 镜像）
-uv run pytest                # 运行测试（58 项，覆盖率 92%）
+uv run pytest                # 运行测试（156 项）
 uv run python -W ignore scripts/smoke_powerflow.py    # 冒烟：潮流 + 对拍
+uv run python scripts/verify_hc.py                    # I3 验收：逐条核对 DoD（约 2 min）
 uv run uvicorn gp_hosting.api:app --port 8010 --app-dir src
 ```
 
@@ -60,23 +62,27 @@ calc/                          Python 计算服务
 │   ├── powerflow.py           交流潮流封装 + 结构化结果
 │   ├── constraints.py         运行约束与越限判定
 │   ├── timeseries.py          曲线 / 场景组装 / 逐时段潮流 / Parquet 落盘
+│   ├── hc_solver.py           承载力：单调性验证 + 二分/线性搜索 + 探针
+│   ├── hc_store.py            承载力结果落库（SQLite，结构对齐 MySQL）
 │   ├── tasks.py               任务注册表（进程内）
 │   └── api.py                 FastAPI 路由
 ├── scripts/
 │   ├── export_cases.py        从 pandapower 导出公开算例为 JSON
-│   ├── gen_profiles.py        生成 96 点模拟负荷/光伏曲线
+│   ├── gen_profiles.py        生成 96 点模拟负荷/光伏曲线（I2 早期用例）
+│   ├── import_simbench_profiles.py  从 SimBench 导出典型日曲线（I3 起默认）
 │   ├── smoke_powerflow.py     冒烟：加载 → 潮流 → 打印指标 → 对拍
 │   ├── pv_trial.py            单点光伏试算 + 电压沿馈线分布图
 │   ├── verify_parquet.py      独立校验落盘结果（形状/数值/电量闭合）
+│   └── verify_hc.py           I3 验收：逐条核对排期 DoD
 │   └── unit_check.py          单位与量级校验（故意构造错误数据验证拦截）
 ├── data/
 │   ├── cases/                 算例 JSON
-│   ├── profiles/              96 点曲线 CSV
+│   ├── profiles/              96 点曲线 CSV（SimBench 导出 + 脚本生成）
 │   └── results/               时序结果（按 taskId 分目录，gitignore）
-└── tests/                     pytest（112 项）
+└── tests/                     pytest（156 项）
 server/                        Java 业务服务（待建）
 web/                           前端（待建）
-docs/                          数据字典、设计文档、架构决策
+docs/                          数据字典、承载力设计文档、架构决策
 experiments/                   实验配置与结果（I7）
 ```
 
@@ -85,8 +91,25 @@ experiments/                   实验配置与结果（I7）
 | 文件 | 说明 |
 |---|---|
 | `ieee33.json` | IEEE 33-bus，**原样导出**自 `pandapower.networks.case33bw()`。线路 `max_i_ka=99999`（原算例不约束载流量），5 条联络线停运，纯辐射状。 |
-| `ieee33_ampacity.json` | 同上，仅把在运线路载流量改为 **0.30 kA**（按基线最大电流 0.210 kA 反推的工程假设），使"线路过载"约束可被观测。 |
+| `ieee33_ampacity.json` | 同上，仅把全部线路载流量改为 **0.29 kA**（pandapower 标准线型 `70-AL1/11-ST1A 10.0`），使"线路过载"约束可被观测。基线负载率 72.5%。 |
 | `cigre_mv.json` | CIGRE MV 20 kV 算例，用于证明算法不依赖单一算例。 |
+
+## 承载力（I3）
+
+```bash
+# 单节点：默认算例 ieee33_ampacity + SimBench 光伏最大日 + GB/T 12325
+curl -s -X POST localhost:8010/api/hc/single -H 'Content-Type: application/json' \
+  -d '{"bus": 17}' | python -m json.tool
+
+# 多节点（各节点独立评估）
+curl -s -X POST localhost:8010/api/hc/batch -H 'Content-Type: application/json' \
+  -d '{"buses": [1, 5, 8, 12, 17]}' | python -m json.tool
+```
+
+实测（96 时段，单节点 9–12 s）：bus1 13.95 MW（线路受限）→ bus17 3.07 MW（电压受限），
+主干严格递减。**注意**：IEEE 33 在满负荷日基线电压即 0.9131 p.u. < 0.93，
+此时 GB/T 口径会返回 `max_mw=0, limiting_type=baseline_infeasible` —— 这是算例属性，不是错误。
+详见 [docs/hosting-capacity.md](docs/hosting-capacity.md)。
 
 ## 关键约定
 

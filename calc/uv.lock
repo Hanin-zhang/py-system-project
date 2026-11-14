@@ -211,6 +211,7 @@ dev = [
     { name = "matplotlib" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "simbench" },
 ]
 
 [package.metadata]
@@ -230,6 +231,7 @@ dev = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "simbench", specifier = "==1.5.3" },
 ]
 
 [[package]]
@@ -609,6 +611,18 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/65/94/7698add8f276dbab7a9de9fb6b0e02fc13ee61d51c7c3f85ac28b65e1239/scipy-1.17.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:f590cd684941912d10becc07325a3eeb77886fe981415660d9265c4c418d0bea", size = 37625856, upload-time = "2026-02-23T00:19:00.307Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/a2/84/dc08d77fbf3d87d3ee27f6a0c6dcce1de5829a64f2eae85a0ecc1f0daa73/scipy-1.17.1-cp312-cp312-win_amd64.whl", hash = "sha256:41b71f4a3a4cab9d366cd9065b288efc4d4f3c0b37a91a8e0947fb5bd7f31d87", size = 36549682, upload-time = "2026-02-23T00:19:07.67Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/bc/98/fe9ae9ffb3b54b62559f52dedaebe204b408db8109a8c66fdd04869e6424/scipy-1.17.1-cp312-cp312-win_arm64.whl", hash = "sha256:f4115102802df98b2b0db3cce5cb9b92572633a1197c77b7553e5203f284a5b3", size = 24547340, upload-time = "2026-02-23T00:19:12.024Z" },
+]
+
+[[package]]
+name = "simbench"
+version = "1.5.3"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "pandapower" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/14/a3/6abc401d86139c0fcc39d08fa13a7e78b37d75d490952b04f8ee3eff29f7/simbench-1.5.3.tar.gz", hash = "sha256:518db08a9a72180de4ce0668715f7cf796dc50a1b5a973b0b6ff0bbaf938e8a8", size = 88282087, upload-time = "2024-04-23T13:51:57.776Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/6f/08/9be5247c5d02b53d2ea57e20c10cbe5241dcc280c7505b00fe42e6d82af7/simbench-1.5.3-py3-none-any.whl", hash = "sha256:4728e7d5894e34715436f4e73b6bb479045f37df97188f835330af6c5982b260", size = 90965663, upload-time = "2024-04-23T13:51:51.539Z" },
 ]
 
 [[package]]

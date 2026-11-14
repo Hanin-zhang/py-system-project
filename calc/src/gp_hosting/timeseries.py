@@ -4,7 +4,7 @@
 
 - `profiles.load_profile()`   只负责读 CSV 并校验，不碰电网
 - `assemble_scenario()`       只负责把「算例 + 曲线 + 光伏接入配置」变成可执行方案
-- `run_timeseries()`          只负责逐时段执行潮流、收集矩阵，**不做越限判定**（那是 constraints 的事）
+- `TimeseriesRunner`          只负责逐时段执行潮流、收集矩阵，**不做越限判定**（那是 constraints 的事）
 - `write_result_set()`        只负责落盘，不参与计算
 
 **性能设计**：
@@ -348,9 +348,6 @@ def step_to_hhmm(step: int, n_steps: int) -> str:
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
-_time_str = step_to_hhmm  # 兼容模块内部旧调用
-
-
 class TimeseriesRunner:
     """在**同一张 pandapower 网**上反复跑一天的时序潮流。
 
@@ -538,15 +535,15 @@ class TimeseriesRunner:
             min_vm_pu=float(min_flat),
             min_vm_bus=int(net.bus.index[min_b]) if len(net.bus) else -1,
             min_vm_step=int(min_t),
-            min_vm_time=_time_str(int(min_t), n_steps),
+            min_vm_time=step_to_hhmm(int(min_t), n_steps),
             max_vm_pu=float(max_flat),
             max_vm_bus=int(net.bus.index[max_b]) if len(net.bus) else -1,
             max_vm_step=int(max_t),
-            max_vm_time=_time_str(int(max_t), n_steps),
+            max_vm_time=step_to_hhmm(int(max_t), n_steps),
             max_line_loading_percent=float(max_ll),
             max_line_index=int(net.line.index[ll_i]) if n_line else -1,
             max_line_step=int(ll_t),
-            max_line_time=_time_str(int(ll_t), n_steps),
+            max_line_time=step_to_hhmm(int(ll_t), n_steps),
             max_trafo_loading_percent=float(max_tl),
             max_trafo_index=int(net.trafo.index[tl_i]) if n_trafo else None,
             energy_loss_mwh=energy_loss,
@@ -569,6 +566,15 @@ class TimeseriesRunner:
             steps=list(range(n_steps)),
             converged=converged,
         )
+
+
+def run_timeseries(scenario: Scenario) -> TimeseriesResult:
+    """对场景跑一次完整时序。单次调用的便捷入口，内部走 TimeseriesRunner。
+
+    需要反复改容量跑多轮时（I3 的承载力搜索），请**复用** TimeseriesRunner 实例，
+    否则每轮都会重新构网 + 冷启动，多花约 15% 时间。
+    """
+    return TimeseriesRunner(scenario).run()
 
 
 # --------------------------------------------------------------------------

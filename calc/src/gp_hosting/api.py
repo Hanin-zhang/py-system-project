@@ -3,6 +3,7 @@
 接口分层：
 - `/api/powerflow/*`   单断面潮流（I1）
 - `/api/timeseries/*`  时序仿真（I2）
+- `/api/hc/*`          承载力评估（I3）
 - `/api/case/*`        算例校验
 
 约定：
@@ -24,13 +25,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from gp_hosting import powerflow, timeseries
+from gp_hosting import hc_solver, powerflow, timeseries
 from gp_hosting.case_loader import (
     CaseValidationError,
     load_case_dict,
     build_net,
 )
-from gp_hosting.constraints import Constraints, check
+from gp_hosting.constraints import CONSTRAINT_PRESETS, Constraints, check, constraints_from_preset
+from gp_hosting.hc_store import HcStore
 from gp_hosting.tasks import registry
 
 logger = logging.getLogger("gp_hosting.api")
@@ -38,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 app = FastAPI(
     title="配电网光伏承载力平台 · 计算服务",
-    version="0.2.0",
+    version="0.3.0",
     description="基于 pandapower 的潮流、时序仿真与承载力评估。全部算例基于公开标准算例与模拟数据。",
 )
 
@@ -385,3 +387,185 @@ def get_timeseries_matrix(
 def list_timeseries_tasks(limit: int = 20) -> ResultEnvelope:
     return ResultEnvelope(data={"tasks": [r.to_dict() for r in registry.list(limit)]})
 
+
+
+# --------------------------------------------------------------------------
+# 承载力评估（I3）
+# --------------------------------------------------------------------------
+
+DEFAULT_HC_LOAD_PROFILE = "simbench_pv_max_day_20160513_load.csv"
+DEFAULT_HC_PV_PROFILE = "simbench_pv_max_day_20160513_pv.csv"
+
+_hc_store: HcStore | None = None
+
+
+def get_hc_store() -> HcStore:
+    """惰性创建，且跟随 RESULT_ROOT（测试里会 monkeypatch 它）。"""
+    global _hc_store
+    root = RESULT_ROOT / "hc"
+    if _hc_store is None or _hc_store.root != root:
+        _hc_store = HcStore(root)
+    return _hc_store
+
+
+class ConstraintsRequest(BaseModel):
+    preset: str = Field(default="gbt_12325", description=f"约束预设：{', '.join(CONSTRAINT_PRESETS)}")
+    vm_min_pu: float | None = Field(default=None, gt=0, lt=2, description="覆盖电压下限")
+    vm_max_pu: float | None = Field(default=None, gt=0, lt=2, description="覆盖电压上限")
+    line_loading_percent_max: float | None = Field(default=None, gt=0, description="覆盖线路负载率上限 %")
+    trafo_loading_percent_max: float | None = Field(default=None, gt=0, description="覆盖变压器负载率上限 %")
+
+    def build(self) -> Constraints:
+        try:
+            return constraints_from_preset(
+                self.preset,
+                vm_min_pu=self.vm_min_pu,
+                vm_max_pu=self.vm_max_pu,
+                line_loading_percent_max=self.line_loading_percent_max,
+                trafo_loading_percent_max=self.trafo_loading_percent_max,
+            )
+        except ValueError as exc:
+            raise timeseries.ProfileError(str(exc), {"field": "constraints"}) from exc
+
+
+class HcOptionsRequest(BaseModel):
+    tol_mw: float = Field(default=0.010, gt=0, description="二分精度 MW（默认 10 kW）")
+    max_capacity_mw: float = Field(default=50.0, gt=0, le=500, description="搜索上限 MW")
+    coarse_points: int = Field(default=10, ge=3, le=50, description="单调性粗扫点数")
+    probe_mw: float = Field(default=0.050, gt=0, description="双向探针偏移 MW（默认 50 kW）")
+
+    def build(self) -> hc_solver.HcOptions:
+        try:
+            return hc_solver.HcOptions(
+                tol_mw=self.tol_mw,
+                max_capacity_mw=self.max_capacity_mw,
+                initial_mw=min(0.5, self.max_capacity_mw),
+                coarse_points=self.coarse_points,
+                probe_mw=self.probe_mw,
+            )
+        except ValueError as exc:
+            raise timeseries.ProfileError(str(exc), {"field": "options"}) from exc
+
+
+class HcBaseRequest(BaseModel):
+    case: dict | None = Field(default=None, description="算例 JSON；与 case_ref 二选一")
+    case_ref: str | None = Field(
+        default=None, description="内置算例名；case 与 case_ref 都不给时用 ieee33_ampacity"
+    )
+    load_profile_path: str | None = Field(
+        default=None, description=f"负荷曲线 CSV；默认 SimBench 光伏最大日 {DEFAULT_HC_LOAD_PROFILE}"
+    )
+    pv_profile_path: str | None = Field(default=None, description=f"光伏曲线 CSV；默认 {DEFAULT_HC_PV_PROFILE}")
+    load_scale: float = Field(default=1.0, gt=0, le=10)
+    power_factor: float = Field(default=1.0, gt=0, le=1.0, description="光伏恒功率因数（滞后，吸收无功）")
+    constraints: ConstraintsRequest = Field(default_factory=ConstraintsRequest)
+    options: HcOptionsRequest = Field(default_factory=HcOptionsRequest)
+    include_curve: bool = Field(default=True, description="响应中是否包含承载力扫描曲线")
+    name: str = ""
+
+    def base_spec(self) -> timeseries.ScenarioSpec:
+        if self.case is None and self.case_ref is None:
+            self.case_ref = "ieee33_ampacity"
+        case_path = _stage_case(_resolve_case(self))  # type: ignore[arg-type]
+        return timeseries.ScenarioSpec(
+            case_path=str(case_path),
+            load_profile_path=self.load_profile_path or str(DEFAULT_PROFILE_DIR / DEFAULT_HC_LOAD_PROFILE),
+            pv_profile_path=self.pv_profile_path or str(DEFAULT_PROFILE_DIR / DEFAULT_HC_PV_PROFILE),
+            load_scale=self.load_scale,
+            name=self.name,
+        )
+
+
+class HcSingleRequest(HcBaseRequest):
+    bus: int = Field(description="光伏接入节点")
+
+
+class HcBatchRequest(HcBaseRequest):
+    buses: list[int] = Field(min_length=1, max_length=64, description="节点列表（各自独立评估）")
+    workers: int = Field(default=1, ge=1, le=8, description="进程数；默认串行")
+
+
+def _run_hc(req: HcBaseRequest, buses: list[int], workers: int = 1) -> ResultEnvelope:
+    task = registry.create({"kind": "hc", "case_ref": req.case_ref, "buses": buses, "name": req.name})
+    try:
+        constraints = req.constraints.build()
+        options = req.options.build()
+        results = hc_solver.solve_batch(
+            req.base_spec(), buses, constraints, options, power_factor=req.power_factor, workers=workers
+        )
+    except timeseries.ProfileError as exc:
+        registry.fail(task.task_id, code="40002", message=str(exc), detail=exc.detail)
+        raise
+
+    store = get_hc_store()
+    for r in results:
+        store.save(task.task_id, r, scenario_name=req.name)
+
+    summary = {
+        "n_nodes": len(results),
+        "results": [
+            {k: r.to_dict(include_curve=False)[k] for k in
+             ("bus", "max_mw", "limiting_type", "limiting_element_type", "limiting_element_index",
+              "limiting_time", "search_method", "iterations", "elapsed_ms")}
+            | {"monotonic": r.monotonicity.monotonic, "probe_passed": r.probe.get("passed")}
+            for r in results
+        ],
+    }
+    registry.succeed(task.task_id, result_dir=str(store.root / task.task_id), summary=summary)
+
+    # 探针不通过 = 算法给出了错误（偏大）结果，按排期要求视为 bug，必须显式暴露
+    failed_probe = [r.bus for r in results if r.probe.get("passed") is False]
+    return ResultEnvelope(
+        code=0,
+        message="ok" if not failed_probe else f"节点 {failed_probe} 的 ±探针验证未通过",
+        data={
+            "task": registry.get(task.task_id).to_dict(),
+            "results": [r.to_dict(include_curve=req.include_curve) for r in results],
+        },
+    )
+
+
+@app.post("/api/hc/single", response_model=ResultEnvelope, summary="单节点光伏承载力")
+def hc_single(req: HcSingleRequest) -> ResultEnvelope:
+    env = _run_hc(req, [req.bus])
+    data = env.data or {}
+    return ResultEnvelope(
+        code=env.code, message=env.message, data={"task": data.get("task"), **(data.get("results") or [{}])[0]}
+    )
+
+
+@app.post("/api/hc/batch", response_model=ResultEnvelope, summary="多节点光伏承载力（各节点独立）")
+def hc_batch(req: HcBatchRequest) -> ResultEnvelope:
+    if len(set(req.buses)) != len(req.buses):
+        raise timeseries.ProfileError("节点列表有重复", {"field": "buses", "buses": req.buses})
+    return _run_hc(req, req.buses, workers=req.workers)
+
+
+@app.get("/api/hc/presets", response_model=ResultEnvelope, summary="可用约束预设")
+def hc_presets() -> ResultEnvelope:
+    return ResultEnvelope(data={"presets": CONSTRAINT_PRESETS})
+
+
+@app.get("/api/hc/{task_id}", response_model=ResultEnvelope, summary="查询承载力任务结果（落库摘要）")
+def hc_get(task_id: str) -> ResultEnvelope:
+    rows = get_hc_store().by_task(task_id)
+    if not rows:
+        return ResultEnvelope(code=40404, message=f"承载力任务 {task_id} 不存在", data=None)
+    return ResultEnvelope(data={"task_id": task_id, "rows": rows})
+
+
+@app.get("/api/hc/{task_id}/curve", response_model=ResultEnvelope, summary="承载力扫描曲线（接入容量 → 指标）")
+def hc_curve(task_id: str, bus: int) -> ResultEnvelope:
+    detail = get_hc_store().detail(task_id, bus)
+    if detail is None:
+        return ResultEnvelope(code=40404, message=f"任务 {task_id} 中无节点 {bus} 的结果", data=None)
+    return ResultEnvelope(
+        data={
+            "task_id": task_id,
+            "bus": bus,
+            "max_mw": detail["max_mw"],
+            "limiting_type": detail["limiting_type"],
+            "constraints": detail["constraints"],
+            "points": detail["curve"],
+        }
+    )
