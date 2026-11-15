@@ -4,6 +4,7 @@
 - `/api/powerflow/*`   单断面潮流（I1）
 - `/api/timeseries/*`  时序仿真（I2）
 - `/api/hc/*`          承载力评估（I3）
+- `/api/analysis/*`    越限归因与敏感性（I4）
 - `/api/case/*`        算例校验
 
 约定：
@@ -23,9 +24,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+import numpy as np
 from pydantic import BaseModel, Field
 
-from gp_hosting import hc_solver, powerflow, timeseries
+from gp_hosting import analysis, hc_solver, powerflow, timeseries
 from gp_hosting.case_loader import (
     CaseValidationError,
     load_case_dict,
@@ -40,7 +42,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 app = FastAPI(
     title="配电网光伏承载力平台 · 计算服务",
-    version="0.3.0",
+    version="0.4.0",
     description="基于 pandapower 的潮流、时序仿真与承载力评估。全部算例基于公开标准算例与模拟数据。",
 )
 
@@ -569,3 +571,170 @@ def hc_curve(task_id: str, bus: int) -> ResultEnvelope:
             "points": detail["curve"],
         }
     )
+
+
+# --------------------------------------------------------------------------
+# 越限归因与敏感性分析（I4）
+# --------------------------------------------------------------------------
+
+DEFAULT_ANALYSIS_LOAD_PROFILE = "simbench_pv_max_day_20160513_load.csv"
+DEFAULT_ANALYSIS_PV_PROFILE = "simbench_pv_max_day_20160513_pv.csv"
+
+
+class AnalysisBaseRequest(BaseModel):
+    """I3 与 I4 共用的场景构造字段。"""
+
+    case: dict | None = Field(default=None, description="算例 JSON；与 case_ref 二选一")
+    case_ref: str | None = Field(default=None, description="内置算例名；都不给时用 ieee33_ampacity")
+    load_profile_path: str | None = Field(default=None, description="负荷曲线 CSV")
+    pv_profile_path: str | None = Field(default=None, description="光伏曲线 CSV")
+    load_scale: float = Field(default=1.0, gt=0, le=10)
+    constraints: ConstraintsRequest = Field(default_factory=ConstraintsRequest)
+
+    def scenario(self, bus: int, capacity_mw: float = 0.0, power_factor: float = 1.0) -> timeseries.Scenario:
+        if self.case is None and self.case_ref is None:
+            self.case_ref = "ieee33_ampacity"
+        return timeseries.assemble_scenario(
+            timeseries.ScenarioSpec(
+                case_path=str(_stage_case(_resolve_case(self))),  # type: ignore[arg-type]
+                load_profile_path=self.load_profile_path or str(DEFAULT_PROFILE_DIR / DEFAULT_ANALYSIS_LOAD_PROFILE),
+                pv_profile_path=self.pv_profile_path or str(DEFAULT_PROFILE_DIR / DEFAULT_ANALYSIS_PV_PROFILE),
+                sgens=[timeseries.SgenInjection(bus=bus, capacity_mw=capacity_mw, power_factor=power_factor)],
+                load_scale=self.load_scale,
+            )
+        )
+
+
+class SensitivityRequest(AnalysisBaseRequest):
+    bus: int = Field(description="光伏接入节点")
+    base_mw: float = Field(gt=0, description="基准容量 MW；ΔP 默认取其 1%")
+    delta_mw: float | None = Field(default=None, gt=0, description="差分步长 MW；须 < base_mw")
+    include_matrices: bool = Field(default=False, description="是否返回全时段斜率矩阵（96×设备数）")
+    top_n: int = Field(default=10, ge=1, le=100, description="瓶颈排序返回条数")
+    with_bottlenecks: bool = Field(default=True, description="是否附带瓶颈排序")
+
+
+class CompareRequest(AnalysisBaseRequest):
+    buses: list[int] = Field(min_length=2, max_length=5, description="2–5 个候选节点")
+    capacity_mw: float = Field(gt=0, description="对比用的等容量 MW")
+    power_factor: float = Field(default=1.0, gt=0, le=1.0)
+    with_sensitivity: bool = Field(default=True, description="是否为每个候选点计算灵敏度")
+
+
+@app.get(
+    "/api/analysis/attribution/{task_id}",
+    response_model=ResultEnvelope,
+    summary="对已落盘的时序结果生成越限归因报告",
+)
+def analysis_attribution(
+    task_id: str,
+    merge_gap: int = 0,
+    top_n: int = 10,
+    constraints_preset: str = "gbt_12325",
+    vm_min_pu: float | None = None,
+    vm_max_pu: float | None = None,
+    line_loading_percent_max: float | None = None,
+    trafo_loading_percent_max: float | None = None,
+    include_heatmap: bool = True,
+) -> ResultEnvelope:
+    """读取 taskId 对应的 Parquet 结果，生成事件列表与热力图数据。
+
+    约束由请求指定（默认 GB/T 预设）。若你想复核"当时为什么判为不可行"，
+    请传入与那次判定相同的约束参数。
+    """
+    record = registry.get(task_id)
+    if record is None or record.status.value != "SUCCEEDED" or not record.result_dir:
+        return ResultEnvelope(code=40404, message=f"任务 {task_id} 无可用结果", data=None)
+
+    try:
+        c = constraints_from_preset(
+            constraints_preset,
+            vm_min_pu=vm_min_pu,
+            vm_max_pu=vm_max_pu,
+            line_loading_percent_max=line_loading_percent_max,
+            trafo_loading_percent_max=trafo_loading_percent_max,
+        )
+    except ValueError as exc:
+        raise timeseries.ProfileError(str(exc), {"field": "constraints"}) from exc
+
+    data = timeseries.read_result_set(record.result_dir)
+    result = _result_from_frames(data)
+    report = analysis.build_attribution(result, c, merge_gap=merge_gap, top_n=top_n)
+    payload = report.to_dict()
+    if not include_heatmap:
+        payload.pop("heatmap", None)
+    payload["task_id"] = task_id
+    payload["source"] = {"result_dir": record.result_dir, "files": data["meta"].get("files")}
+    return ResultEnvelope(data=payload)
+
+
+def _result_from_frames(data: dict) -> timeseries.TimeseriesResult:
+    """把 read_result_set() 的 DataFrame 还原成 TimeseriesResult，供 analysis 复用。"""
+    meta = data["meta"]
+    vm = data["vm_pu"]
+    ll = data["line_loading"]
+    tl = data["trafo_loading"]
+    ts_df = data["timeseries"]
+    summary = timeseries.TimeseriesSummary(**data["summary"])
+    n_steps = meta["dims"]["n_steps"]
+    return timeseries.TimeseriesResult(
+        summary=summary,
+        vm_pu=vm.to_numpy(dtype=float) if vm.shape[1] else np.zeros((n_steps, 0)),
+        line_loading=ll.to_numpy(dtype=float) if ll.shape[1] else np.zeros((n_steps, 0)),
+        trafo_loading=tl.to_numpy(dtype=float) if tl.shape[1] else np.zeros((n_steps, 0)),
+        pl_mw=ts_df["pl_mw"].to_numpy(dtype=float),
+        pv_mw=ts_df["pv_mw"].to_numpy(dtype=float),
+        bus_index=[int(c) for c in vm.columns],
+        line_index=[int(c) for c in ll.columns],
+        trafo_index=[int(c) for c in tl.columns],
+        steps=list(range(n_steps)),
+        converged=data["status"]["converged"].to_numpy(dtype=bool),
+    )
+
+
+@app.post("/api/analysis/sensitivity", response_model=ResultEnvelope, summary="节点灵敏度与瓶颈排序")
+def analysis_sensitivity(req: SensitivityRequest) -> ResultEnvelope:
+    c = req.constraints.build()
+    scenario = req.scenario(req.bus, capacity_mw=req.base_mw)
+    task = registry.create({"kind": "sensitivity", "bus": req.bus, "base_mw": req.base_mw})
+    try:
+        sens = analysis.compute_sensitivity(scenario, req.base_mw, req.delta_mw)
+        result = timeseries.run_timeseries(scenario)
+    except timeseries.ProfileError as exc:
+        registry.fail(task.task_id, code="40002", message=str(exc), detail=exc.detail)
+        raise
+
+    payload = sens.to_dict()
+    if not req.include_matrices:
+        payload.pop("matrices", None)
+    if req.with_bottlenecks:
+        payload["bottlenecks"] = [
+            b.to_dict() for b in analysis.rank_bottlenecks(sens, result, c, top_n=req.top_n)
+        ]
+    payload["task"] = registry.get(task.task_id).to_dict()
+    registry.succeed(task.task_id, result_dir="", summary={
+        "bus": req.bus, "base_mw": req.base_mw, "d_v_bus_at_peak_dp": sens.d_v_bus_at_peak_dp,
+    })
+    payload["task"] = registry.get(task.task_id).to_dict()
+    return ResultEnvelope(data=payload)
+
+
+@app.post("/api/analysis/compare", response_model=ResultEnvelope, summary="等容量下比较 2–5 个接入点")
+def analysis_compare(req: CompareRequest) -> ResultEnvelope:
+    c = req.constraints.build()
+    base = req.scenario(req.buses[0], capacity_mw=0.0).spec
+    task = registry.create({"kind": "compare", "buses": req.buses, "capacity_mw": req.capacity_mw})
+    try:
+        out = analysis.compare_buses(
+            base, req.buses, req.capacity_mw, c,
+            power_factor=req.power_factor, with_sensitivity=req.with_sensitivity,
+        )
+    except timeseries.ProfileError as exc:
+        registry.fail(task.task_id, code="40002", message=str(exc), detail=exc.detail)
+        raise
+
+    registry.succeed(task.task_id, result_dir="", summary={
+        "recommended_bus": out["recommended_bus"], "capacity_mw": req.capacity_mw,
+    })
+    out["task"] = registry.get(task.task_id).to_dict()
+    return ResultEnvelope(data=out)
