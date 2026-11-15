@@ -572,6 +572,7 @@ class CandidateResult:
     headroom_mw: float | None          # 由瓶颈分析给出的最近触限容量增量
     energy_loss_mwh: float
     recommendation_score: float
+    rank: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -618,12 +619,15 @@ def compare_buses(
         result = timeseries.run_timeseries(scenario)
         report = _attribution_from_result(result, c)
 
+        # 灵敏度既提供 d_v，也提供"离触限还有多少 MW"（评分破平用）。
+        # 关闭灵敏度时两者都为 None，此时排序只能靠 node 编号兜底 —— 接口文档里已注明
+        # 推荐质量依赖 with_sensitivity=True（默认开启）。
         d_v = headroom = None
         if with_sensitivity:
             sens = compute_sensitivity(scenario, capacity_mw)
             pos = list(result.bus_index).index(bus)
             d_v = sens.d_v_bus_at_peak_dp
-            ranked = rank_bottlenecks(sens, result, c, top_n=1)
+            ranked = rank_bottlenecks(sens, constraints=c, top_n=1)
             headroom = ranked[0].headroom_mw if ranked else None
 
         worst = max((e.peak_severity for e in report.events), default=0.0)
@@ -647,14 +651,26 @@ def compare_buses(
         )
 
     # 评分：可行优先；不可行时越限越轻越好
+    #
+    # 为什么需要 `headroom_mw` 这一项：可行性是二值的，越限幅度对可行候选恒为 0，
+    # 而线路最大负载率取的是全网最大值（出现在夜间，与接入点无关）。所以多个候选
+    # 同时可行时，前几项会完全并列，排序退化成输入顺序 —— 换个 buses 顺序就换推荐结果。
+    # 用"离触限还有多少 MW"破平，物理含义清楚：勉强可行 < 游刃有余。
+    # 权重 0.1 保证它不会翻转可行性优先级（headroom 上限按 250 MW 截断，最多 25 分，
+    # 远小于可行性的 1000 分）。
     for r in rows:
+        margin_bonus = 0.1 * min(r.headroom_mw, 250.0) if r.headroom_mw is not None else 0.0
         r.recommendation_score = (
             (1000.0 if r.feasible else 0.0)
             - 100.0 * r.worst_severity
             - 0.01 * float(r.max_line_loading_percent or 0.0)
             - 10.0 * r.n_unconverged
+            + margin_bonus
         )
-    rows.sort(key=lambda r: -r.recommendation_score)
+    # 最终仍并列时按节点编号升序，保证结果与输入顺序无关、可复现
+    rows.sort(key=lambda r: (-r.recommendation_score, r.bus))
+    for i, r in enumerate(rows, 1):
+        r.rank = i
 
     return {
         "capacity_mw": float(capacity_mw),
