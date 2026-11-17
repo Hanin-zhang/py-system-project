@@ -417,3 +417,23 @@ class TestHeatmapEchartsContract:
             assert isinstance(x, int) and isinstance(y, int) and isinstance(v, float)
             assert 0 <= x < len(hm["step_times"]) and 0 <= y < len(hm["elements"])
         json.dumps(hm)  # 必须可直接 JSON 序列化给前端
+
+
+class TestCompareTieBreakNoise:
+    def test_float_noise_does_not_override_bus_tiebreak(self, monkeypatch):
+        """回归：bus32 的线路最大负载率比 bus1 小 ~4e-12（潮流收敛噪声），
+        未量化时 score 末位更大，把 bus32 排到第一，按节点编号兜底失效。"""
+        base = ts.ScenarioSpec(case_path=str(CASE_AMP), load_profile_path=str(SB_LOAD), pv_profile_path=str(SB_PV))
+        real_run = ts.run_timeseries
+
+        def noisy_run(scenario):
+            r = real_run(scenario)
+            if scenario.spec.sgens[0].bus == 32:
+                r.summary.max_line_loading_percent -= 1e-9  # 远大于 4e-12，但仍是数值噪声量级
+            return r
+
+        monkeypatch.setattr(an.timeseries, "run_timeseries", noisy_run)
+        for order in ([1, 17, 32], [32, 17, 1]):
+            out = an.compare_buses(base, order, 5.0, Constraints(), with_sensitivity=False)
+            assert out["recommended_bus"] == 1
+            assert [c["bus"] for c in out["candidates"]] == [1, 32, 17]

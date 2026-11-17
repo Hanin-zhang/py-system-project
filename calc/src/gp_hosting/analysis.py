@@ -667,6 +667,10 @@ def compare_buses(
             - 10.0 * r.n_unconverged
             + margin_bonus
         )
+        # 量化到 1e-6：各项输入带有潮流收敛容差（1e-8 MVA）级别的数值噪声。
+        # 实测线路最大负载率在不同接入点间相差 ~4e-12（物理上相同的夜间工况），
+        # 不量化时浮点末位偶尔不同，节点编号兜底不生效，推荐结果随平台/热启动抖动。
+        r.recommendation_score = round(r.recommendation_score, 6)
     # 最终仍并列时按节点编号升序，保证结果与输入顺序无关、可复现
     rows.sort(key=lambda r: (-r.recommendation_score, r.bus))
     for i, r in enumerate(rows, 1):
