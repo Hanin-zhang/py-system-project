@@ -36,7 +36,7 @@ case_loader → powerflow → timeseries → hc_solver → mitigation
 | I1 | 潮流计算内核 + 约束判定 + HTTP 接口 + 测试 | ✅ |
 | I2 | 时序仿真引擎 + Parquet 落盘 + 任务注册表 | ✅ |
 | I3 | 承载力评估（核心）+ 单/批量接口 + sqlite 落库 | ✅ |
-| I4 | 越限归因与敏感性 | 待开始 |
+| I4 | 越限归因 + 敏感性 + 瓶颈排序 + 接入点对比 | ✅ |
 | I5 | 治理策略与方案对比（核心） | 待开始 |
 | I6 | Java 平台 + 前端 v1 | 待开始 |
 
@@ -45,9 +45,10 @@ case_loader → powerflow → timeseries → hc_solver → mitigation
 ```bash
 cd calc
 uv sync                      # 首次安装依赖（国内建议加 --index-url 镜像）
-uv run pytest                # 运行测试（156 项）
+uv run pytest                # 运行测试（218 项，覆盖率 95%）
 uv run python -W ignore scripts/smoke_powerflow.py    # 冒烟：潮流 + 对拍
 uv run python scripts/verify_hc.py                    # I3 验收：逐条核对 DoD（约 2 min）
+uv run python scripts/verify_analysis.py              # I4 验收（约 1 min，17 项）
 uv run uvicorn gp_hosting.api:app --port 8010 --app-dir src
 ```
 
@@ -64,6 +65,7 @@ calc/                          Python 计算服务
 │   ├── timeseries.py          曲线 / 场景组装 / 逐时段潮流 / Parquet 落盘
 │   ├── hc_solver.py           承载力：单调性验证 + 二分/线性搜索 + 探针
 │   ├── hc_store.py            承载力结果落库（SQLite，结构对齐 MySQL）
+│   ├── analysis.py            越限归因 / 热力图 / 灵敏度 / 瓶颈排序 / 接入点对比
 │   ├── tasks.py               任务注册表（进程内）
 │   └── api.py                 FastAPI 路由
 ├── scripts/
@@ -73,16 +75,18 @@ calc/                          Python 计算服务
 │   ├── smoke_powerflow.py     冒烟：加载 → 潮流 → 打印指标 → 对拍
 │   ├── pv_trial.py            单点光伏试算 + 电压沿馈线分布图
 │   ├── verify_parquet.py      独立校验落盘结果（形状/数值/电量闭合）
-│   └── verify_hc.py           I3 验收：逐条核对排期 DoD
+│   ├── verify_hc.py           I3 验收：逐条核对排期 DoD
+│   ├── verify_analysis.py     I4 验收
+│   └── export_heatmap_demo.py 生成 ECharts 热力图演示页（数据内嵌）
 │   └── unit_check.py          单位与量级校验（故意构造错误数据验证拦截）
 ├── data/
 │   ├── cases/                 算例 JSON
 │   ├── profiles/              96 点曲线 CSV（SimBench 导出 + 脚本生成）
 │   └── results/               时序结果（按 taskId 分目录，gitignore）
-└── tests/                     pytest（156 项）
+└── tests/                     pytest（218 项）
 server/                        Java 业务服务（待建）
 web/                           前端（待建）
-docs/                          数据字典、承载力设计文档、架构决策
+docs/                          数据字典、承载力 / 归因设计文档、热力图演示页
 experiments/                   实验配置与结果（I7）
 ```
 
@@ -110,6 +114,27 @@ curl -s -X POST localhost:8010/api/hc/batch -H 'Content-Type: application/json' 
 主干严格递减。**注意**：IEEE 33 在满负荷日基线电压即 0.9131 p.u. < 0.93，
 此时 GB/T 口径会返回 `max_mw=0, limiting_type=baseline_infeasible` —— 这是算例属性，不是错误。
 详见 [docs/hosting-capacity.md](docs/hosting-capacity.md)。
+
+## 归因与敏感性（I4）
+
+```bash
+# 归因报告（读 I2 已落盘的结果，不重算潮流）
+curl -s "localhost:8010/api/analysis/attribution/{taskId}?merge_gap=4" | python -m json.tool
+
+# 灵敏度 + 瓶颈排序
+curl -s -X POST localhost:8010/api/analysis/sensitivity -H 'Content-Type: application/json' \
+  -d '{"bus": 17, "base_mw": 3.0}' | python -m json.tool
+
+# 等容量下比较接入点
+curl -s -X POST localhost:8010/api/analysis/compare -H 'Content-Type: application/json' \
+  -d '{"buses": [1, 8, 17, 32], "capacity_mw": 5.0}' | python -m json.tool
+```
+
+热力图演示页：`docs/figures/heatmap_demo.html`（双击打开，数据内嵌，无需起服务）。
+
+**注意**：排期要求求 `∂V_min/∂P`，本平台实测该值**恒为 0**——全天最低电压出现在
+夜间光伏零出力时刻，与装机容量无关。决策依据是 `∂V_max/∂P` 与注入节点在峰值时刻的
+`∂V/∂P`。详见 [docs/attribution.md](docs/attribution.md)。
 
 ## 关键约定
 
